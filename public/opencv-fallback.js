@@ -27,9 +27,32 @@ window.cv = {
       // Just draw a placeholder message
       ctx.fillStyle = "red"
       ctx.font = "20px Arial"
-      ctx.fillText("OpenCV.js failed to load", 10, 50)
-      ctx.fillText("Using fallback implementation", 10, 80)
-      ctx.fillText("with limited functionality", 10, 110)
+      ctx.fillText("OpenCV.js n'a pas pu être chargé", 10, 50)
+      ctx.fillText("Utilisation de l'implémentation de secours", 10, 80)
+      ctx.fillText("avec des fonctionnalités limitées", 10, 110)
+
+      // Draw a simple lane visualization
+      ctx.strokeStyle = "blue"
+      ctx.lineWidth = 5
+      ctx.beginPath()
+      ctx.moveTo(canvas.width * 0.2, canvas.height)
+      ctx.lineTo(canvas.width * 0.45, canvas.height * 0.6)
+      ctx.stroke()
+
+      ctx.beginPath()
+      ctx.moveTo(canvas.width * 0.8, canvas.height)
+      ctx.lineTo(canvas.width * 0.55, canvas.height * 0.6)
+      ctx.stroke()
+
+      // Draw lane area
+      ctx.fillStyle = "rgba(0, 200, 0, 0.3)"
+      ctx.beginPath()
+      ctx.moveTo(canvas.width * 0.2, canvas.height)
+      ctx.lineTo(canvas.width * 0.45, canvas.height * 0.6)
+      ctx.lineTo(canvas.width * 0.55, canvas.height * 0.6)
+      ctx.lineTo(canvas.width * 0.8, canvas.height)
+      ctx.closePath()
+      ctx.fill()
     }
   },
 
@@ -42,10 +65,10 @@ window.cv = {
 
   // Basic constructors
   Mat: () => ({
-    zeros: () => ({
-      rows: 0,
-      cols: 0,
-      data: new Uint8ClampedArray(0),
+    zeros: (rows, cols, type) => ({
+      rows: rows || 0,
+      cols: cols || 0,
+      data: new Uint8ClampedArray((rows || 0) * (cols || 0) * 4),
       delete: () => {
         console.log("Fallback Mat deleted")
       },
