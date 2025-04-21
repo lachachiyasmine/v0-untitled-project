@@ -8,75 +8,27 @@
       onRuntimeInitialized: function() {
         console.log("OpenCV.js runtime initialized from loader");
         // Signal that OpenCV is ready
-        if (window.parent) {
-          window.parent.postMessage('opencv-ready', '*');
+        if (window.opener) {
+          window.opener.postMessage('opencv-ready', '*');
         }
       }
     };
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.7.0-release.1/opencv.js" 
+          async 
+          onerror="fallbackLoad()"></script>
   <script>
-    // Try multiple sources in sequence
-    const sources = [
-      "https://docs.opencv.org/4.5.5/opencv.js",
-      "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.7.0-release.1/opencv.js",
-      "https://unpkg.com/opencv.js@1.2.1/opencv.js"
-    ];
-    
-    let currentSource = 0;
-    
-    function loadSource(index) {
-      if (index >= sources.length) {
-        console.error("All sources failed");
-        document.getElementById('status').textContent = "Échec du chargement de toutes les sources";
-        return;
-      }
-      
+    function fallbackLoad() {
+      console.log("Primary CDN failed, trying fallback...");
       const script = document.createElement('script');
-      script.src = sources[index];
+      script.src = "https://unpkg.com/opencv.js@1.2.1/opencv.js";
       script.async = true;
-      
-      script.onload = function() {
-        console.log(`Loaded from ${sources[index]}`);
-        document.getElementById('status').textContent = `Chargé depuis ${sources[index]}`;
-      };
-      
-      script.onerror = function() {
-        console.error(`Failed to load from ${sources[index]}`);
-        document.getElementById('status').textContent = `Échec du chargement depuis ${sources[index]}`;
-        loadSource(index + 1);
-      };
-      
       document.head.appendChild(script);
     }
-    
-    // Start loading from the first source
-    loadSource(0);
   </script>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      text-align: center;
-    }
-    .loader {
-      border: 5px solid #f3f3f3;
-      border-top: 5px solid #3498db;
-      border-radius: 50%;
-      width: 50px;
-      height: 50px;
-      animation: spin 2s linear infinite;
-      margin: 20px auto;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
 </head>
 <body>
-  <h1>Chargeur OpenCV.js</h1>
-  <p>Cette page charge OpenCV.js. Une fois chargé, elle notifiera la fenêtre parente.</p>
-  <div class="loader"></div>
-  <p id="status">Chargement en cours...</p>
+  <h1>OpenCV.js Loader</h1>
+  <p>This page is loading OpenCV.js. Once loaded, it will notify the parent window.</p>
 </body>
 </html>

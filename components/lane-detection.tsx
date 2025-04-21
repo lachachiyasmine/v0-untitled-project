@@ -2,12 +2,12 @@
 
 import type React from "react"
 
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, ImageIcon, RefreshCw, Settings, AlertCircle, Info, HelpCircle, RotateCw, Download } from "lucide-react"
+import { Upload, ImageIcon, RefreshCw, Settings, AlertCircle, Info, HelpCircle } from "lucide-react"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
@@ -52,14 +52,6 @@ const DEFAULT_PARAMS: LaneDetectionParams = {
 // Updated to use the real road images
 const SAMPLE_IMAGES = ["/images/road1.jpeg", "/images/road2.jpeg", "/images/road3.jpeg"]
 
-// OpenCV.js loading sources
-const OPENCV_SOURCES = [
-  { name: "Local", url: "/opencv.js" },
-  { name: "CDN 1", url: "https://docs.opencv.org/4.5.5/opencv.js" },
-  { name: "CDN 2", url: "https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.7.0-release.1/opencv.js" },
-  { name: "CDN 3", url: "https://unpkg.com/opencv.js@1.2.1/opencv.js" },
-]
-
 declare global {
   interface Window {
     cv: any
@@ -79,188 +71,13 @@ export default function LaneDetection() {
   const [loadingProgress, setLoadingProgress] = useState(0)
   const [loadingStatus, setLoadingStatus] = useState("Initialisation...")
   const [loadingStage, setLoadingStage] = useState(0)
-  const [currentSource, setCurrentSource] = useState(0)
-  const [retryCount, setRetryCount] = useState(0)
-  const [usingFallback, setUsingFallback] = useState(false)
 
   const originalCanvasRef = useRef<HTMLCanvasElement>(null)
   const processedCanvasRef = useRef<HTMLCanvasElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const scriptRef = useRef<HTMLScriptElement | null>(null)
-  const iframeRef = useRef<HTMLIFrameElement | null>(null)
 
-  // Function to load OpenCV.js from a specific source
-  const loadOpenCvFromSource = useCallback(
-    (sourceIndex: number) => {
-      // Clear previous script if exists
-      if (scriptRef.current) {
-        document.head.removeChild(scriptRef.current)
-        scriptRef.current = null
-      }
-
-      // If we've tried all sources, try iframe method
-      if (sourceIndex >= OPENCV_SOURCES.length) {
-        setLoadingStatus("Tentative de chargement via iframe...")
-        setLoadingProgress(70)
-        loadOpenCvViaIframe()
-        return
-      }
-
-      const source = OPENCV_SOURCES[sourceIndex]
-      setCurrentSource(sourceIndex)
-      setLoadingStatus(`Chargement depuis ${source.name}...`)
-
-      // Set up OpenCV.js module callback
-      window.Module = {
-        onRuntimeInitialized: () => {
-          console.log(`OpenCV.js runtime initialized from ${source.name}`)
-          setIsOpenCvReady(true)
-          setIsOpenCvLoading(false)
-          setLoadingProgress(100)
-          setLoadingStatus(`OpenCV.js chargé avec succès depuis ${source.name}!`)
-        },
-      }
-
-      // Create script element to load OpenCV.js
-      const script = document.createElement("script")
-      script.src = source.url
-      script.async = true
-      script.type = "text/javascript"
-
-      // Handle script events
-      script.onload = () => {
-        console.log(`OpenCV.js script loaded from ${source.name}`)
-        setLoadingProgress(60)
-        setLoadingStatus(`Script chargé depuis ${source.name}, initialisation du runtime...`)
-
-        // Set a timeout to check if onRuntimeInitialized is called
-        setTimeout(() => {
-          if (!isOpenCvReady) {
-            console.warn(`Runtime initialization timeout from ${source.name}, trying next source`)
-            loadOpenCvFromSource(sourceIndex + 1)
-          }
-        }, 10000) // 10 seconds timeout for runtime initialization
-      }
-
-      script.onerror = () => {
-        console.error(`Failed to load OpenCV.js from ${source.name}`)
-        setLoadingProgress(Math.min(90, loadingProgress + 10))
-        setLoadingStatus(`Échec du chargement depuis ${source.name}, essai de la source suivante...`)
-
-        // Try next source
-        loadOpenCvFromSource(sourceIndex + 1)
-      }
-
-      // Add script to document
-      document.head.appendChild(script)
-      scriptRef.current = script
-
-      setLoadingProgress(Math.min(80, 20 + sourceIndex * 15))
-    },
-    [isOpenCvReady, loadingProgress],
-  )
-
-  // Function to load OpenCV.js via iframe as a fallback method
-  const loadOpenCvViaIframe = useCallback(() => {
-    // Remove any existing iframe
-    if (iframeRef.current) {
-      document.body.removeChild(iframeRef.current)
-    }
-
-    // Create an invisible iframe
-    const iframe = document.createElement("iframe")
-    iframe.style.display = "none"
-    iframe.src = "/opencv-loader.html"
-    document.body.appendChild(iframe)
-    iframeRef.current = iframe
-
-    // Listen for messages from the iframe
-    const messageHandler = (event: MessageEvent) => {
-      if (event.data === "opencv-ready") {
-        console.log("OpenCV.js loaded via iframe")
-
-        // Copy the cv object from the iframe to the parent window
-        if (iframe.contentWindow && iframe.contentWindow.cv) {
-          window.cv = iframe.contentWindow.cv
-          setIsOpenCvReady(true)
-          setIsOpenCvLoading(false)
-          setLoadingProgress(100)
-          setLoadingStatus("OpenCV.js chargé avec succès via iframe!")
-
-          // Clean up the message listener
-          window.removeEventListener("message", messageHandler)
-        }
-      }
-    }
-
-    window.addEventListener("message", messageHandler)
-
-    // Set a timeout for iframe loading
-    setTimeout(() => {
-      if (!isOpenCvReady) {
-        console.warn("Iframe loading timeout, using minimal fallback")
-        window.removeEventListener("message", messageHandler)
-        loadMinimalFallback()
-      }
-    }, 15000) // 15 seconds timeout for iframe loading
-  }, [isOpenCvReady])
-
-  // Function to load a minimal fallback implementation
-  const loadMinimalFallback = useCallback(() => {
-    setLoadingStatus("Chargement de l'implémentation de secours minimale...")
-    setLoadingProgress(90)
-
-    // Create script element to load fallback
-    const script = document.createElement("script")
-    script.src = "/opencv-fallback.js"
-    script.async = true
-
-    script.onload = () => {
-      console.log("Minimal fallback loaded")
-      setUsingFallback(true)
-      setIsOpenCvReady(true)
-      setIsOpenCvLoading(false)
-      setLoadingProgress(100)
-      setLoadingStatus("Implémentation de secours chargée. Fonctionnalités limitées disponibles.")
-    }
-
-    script.onerror = () => {
-      console.error("Failed to load fallback implementation")
-      setIsOpenCvLoading(false)
-      setError("Impossible de charger OpenCV.js ou l'implémentation de secours. Veuillez réessayer plus tard.")
-    }
-
-    document.head.appendChild(script)
-    scriptRef.current = script
-  }, [])
-
-  // Function to retry loading OpenCV.js
-  const retryLoading = useCallback(() => {
-    // Reset states
-    setIsOpenCvReady(false)
-    setIsOpenCvLoading(true)
-    setLoadingProgress(0)
-    setLoadingStatus("Nouvelle tentative de chargement...")
-    setError(null)
-    setRetryCount((prev) => prev + 1)
-    setUsingFallback(false)
-
-    // Remove any existing scripts or iframes
-    if (scriptRef.current) {
-      document.head.removeChild(scriptRef.current)
-      scriptRef.current = null
-    }
-
-    if (iframeRef.current) {
-      document.body.removeChild(iframeRef.current)
-      iframeRef.current = null
-    }
-
-    // Start loading from the first source again
-    loadOpenCvFromSource(0)
-  }, [loadOpenCvFromSource])
-
-  // Load OpenCV.js on component mount
+  // Load OpenCV.js with improved visual feedback
   useEffect(() => {
     // Clear any previous errors
     setError(null)
@@ -271,34 +88,98 @@ export default function LaneDetection() {
       setIsOpenCvReady(true)
       setIsOpenCvLoading(false)
       setLoadingProgress(100)
-      setLoadingStatus("OpenCV.js déjà chargé!")
+      setLoadingStatus("OpenCV.js chargé avec succès!")
       return
     }
 
-    // Start loading from the first source
-    loadOpenCvFromSource(0)
+    // Set up loading stages
+    const loadingStages = [
+      "Initialisation...",
+      "Chargement du script OpenCV.js...",
+      "Initialisation du runtime OpenCV.js...",
+      "Préparation de l'environnement...",
+      "Finalisation...",
+    ]
 
-    // Set a global timeout for all loading methods
+    // Start loading animation
+    let currentStage = 0
+    const updateLoadingStatus = () => {
+      if (currentStage < loadingStages.length) {
+        setLoadingStage(currentStage)
+        setLoadingStatus(loadingStages[currentStage])
+        setLoadingProgress(Math.min(100, Math.round((currentStage / loadingStages.length) * 100)))
+        currentStage++
+      }
+    }
+
+    // Initial status
+    updateLoadingStatus()
+
+    // Update status periodically to show progress
+    const loadingInterval = setInterval(() => {
+      if (!isOpenCvReady && currentStage < loadingStages.length) {
+        updateLoadingStatus()
+      } else {
+        clearInterval(loadingInterval)
+      }
+    }, 1500)
+
+    // Set up OpenCV.js module callback
+    window.Module = {
+      onRuntimeInitialized: () => {
+        console.log("OpenCV.js runtime initialized")
+        clearInterval(loadingInterval)
+        setLoadingProgress(100)
+        setLoadingStatus("OpenCV.js chargé avec succès!")
+        setIsOpenCvReady(true)
+        setIsOpenCvLoading(false)
+      },
+    }
+
+    // Create script element to load local OpenCV.js
+    const script = document.createElement("script")
+    script.src = "/opencv.js" // Local copy in public folder
+    script.async = true
+    script.type = "text/javascript"
+
+    // Handle script events
+    script.onload = () => {
+      console.log("OpenCV.js script loaded")
+      setLoadingProgress(60)
+      setLoadingStatus("Script chargé, initialisation du runtime...")
+    }
+
+    script.onerror = (e) => {
+      console.error("Failed to load OpenCV.js", e)
+      clearInterval(loadingInterval)
+      setIsOpenCvLoading(false)
+      setError("Échec du chargement d'OpenCV.js. Veuillez vérifier que le fichier existe dans le dossier public.")
+    }
+
+    // Add script to document
+    document.head.appendChild(script)
+    scriptRef.current = script
+
+    // Set a timeout to detect if OpenCV.js fails to initialize
     const timeoutId = setTimeout(() => {
       if (!isOpenCvReady) {
+        clearInterval(loadingInterval)
         setIsOpenCvLoading(false)
         setError(
-          "Le délai d'initialisation d'OpenCV.js a expiré. Veuillez vérifier votre connexion internet ou essayer de recharger la page.",
+          "Le délai d'initialisation d'OpenCV.js a expiré. Veuillez vérifier que le fichier est correctement téléchargé et non corrompu.",
         )
       }
-    }, 60000) // 60 seconds global timeout
+    }, 30000) // 30 seconds timeout
 
     // Clean up
     return () => {
+      clearInterval(loadingInterval)
       clearTimeout(timeoutId)
       if (scriptRef.current) {
         document.head.removeChild(scriptRef.current)
       }
-      if (iframeRef.current) {
-        document.body.removeChild(iframeRef.current)
-      }
     }
-  }, [isOpenCvReady, loadOpenCvFromSource, retryCount])
+  }, [isOpenCvReady])
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
@@ -420,21 +301,6 @@ export default function LaneDetection() {
     }
   }
 
-  // Function to download OpenCV.js manually
-  const downloadOpenCvManually = () => {
-    // Create a link to download the file
-    const link = document.createElement("a")
-    link.href = "https://docs.opencv.org/4.5.5/opencv.js"
-    link.download = "opencv.js"
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-
-    alert(
-      "Téléchargement d'OpenCV.js démarré. Une fois téléchargé, placez le fichier dans le dossier 'public' de votre projet.",
-    )
-  }
-
   useEffect(() => {
     if (imageUrl && activeTab === "result" && laneDetector && isOpenCvReady) {
       processImage()
@@ -453,8 +319,7 @@ export default function LaneDetection() {
                 <p>{loadingStatus}</p>
                 <Progress value={loadingProgress} className="h-2" />
                 <p className="text-xs text-muted-foreground">
-                  {loadingProgress}% terminé - Source actuelle:{" "}
-                  {OPENCV_SOURCES[currentSource]?.name || "Méthode alternative"}
+                  {loadingProgress}% terminé - Étape {loadingStage + 1}/5
                 </p>
               </div>
             </AlertDescription>
@@ -465,38 +330,7 @@ export default function LaneDetection() {
           <Alert variant="destructive">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Erreur</AlertTitle>
-            <AlertDescription>
-              <div className="space-y-4">
-                <p>{error}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={retryLoading} className="flex items-center">
-                    <RotateCw className="mr-2 h-4 w-4" /> Réessayer
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={downloadOpenCvManually} className="flex items-center">
-                    <Download className="mr-2 h-4 w-4" /> Télécharger OpenCV.js manuellement
-                  </Button>
-                </div>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {usingFallback && (
-          <Alert variant="warning">
-            <Info className="h-4 w-4" />
-            <AlertTitle>Mode de secours activé</AlertTitle>
-            <AlertDescription>
-              <p>
-                Vous utilisez actuellement une version de secours minimale d'OpenCV.js avec des fonctionnalités
-                limitées. Pour une expérience complète, veuillez télécharger OpenCV.js manuellement ou réessayer plus
-                tard.
-              </p>
-              <div className="mt-2">
-                <Button variant="outline" size="sm" onClick={retryLoading} className="flex items-center">
-                  <RotateCw className="mr-2 h-4 w-4" /> Réessayer avec la version complète
-                </Button>
-              </div>
-            </AlertDescription>
+            <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
 
